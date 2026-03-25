@@ -1,15 +1,35 @@
-import axios, { AxiosResponse } from 'axios';
+import axios, { AxiosError, AxiosResponse } from 'axios';
 
 // 🔥 CHANGE THIS ONLY IF BACKEND URL CHANGES
 const BASE_URL = import.meta.env.PROD
   ? "https://rfi-intelligence-api-g2bff4c3hmfxatcj.centralindia-01.azurewebsites.net"
   : "/api";
-// ─── Axios client ────────────────────────────────────────────────────────────
+
+// ─── Axios Client ────────────────────────────────────────────────────────────
 const api = axios.create({
   baseURL: BASE_URL,
-  timeout: 120000,
+  timeout: 120_000,
   headers: { 'Content-Type': 'application/json' },
 });
+
+// ─── Response Interceptor (normalised error messages) ────────────────────────
+api.interceptors.response.use(
+  (res) => res,
+  (error: AxiosError<{ error?: string; message?: string }>) => {
+    if (error.response) {
+      const data = error.response.data;
+      const msg =
+        data?.error ?? data?.message ?? `Server error (${error.response.status})`;
+      return Promise.reject(new Error(msg));
+    }
+    if (error.code === 'ECONNABORTED') {
+      return Promise.reject(new Error('Request timed out — please try again.'));
+    }
+    return Promise.reject(
+      new Error(error.message || 'Network error — check your connection.')
+    );
+  }
+);
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 export interface Conversation {
@@ -141,6 +161,7 @@ export const documentsApi = {
   upload: (formData: FormData): Promise<AxiosResponse<{ documentId: string }>> =>
     api.post('/documents/upload', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 300_000, // 5 min for large uploads
     }),
 
   checkStatus: (id: string): Promise<AxiosResponse<{ id: string; status: string; chunk_count?: number }>> =>
@@ -238,13 +259,15 @@ export async function streamMessage(
   files: AttachedFile[],
   onToken: (token: string) => void,
   onDone: (tokensUsed: number) => void,
-  onError: (err: string) => void
+  onError: (err: string) => void,
+  signal?: AbortSignal
 ): Promise<void> {
   try {
     const response = await fetch(`${BASE_URL}/chat/message`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ conversationId, content, mode, files }),
+      signal,
     });
 
     if (!response.ok) {
@@ -252,42 +275,64 @@ export async function streamMessage(
       try {
         const errBody = await response.json();
         errMsg = errBody.error || errMsg;
-      } catch (e) {
-  console.warn("Skipped malformed SSE data");
-}
+      } catch {
+        // response body wasn't JSON — keep the generic HTTP error
+      }
       onError(errMsg);
       return;
     }
 
     const reader = response.body?.getReader();
-    if (!reader) { onError('No response stream available'); return; }
+    if (!reader) {
+      onError('No response stream available');
+      return;
+    }
 
     const decoder = new TextDecoder();
     let buffer = '';
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
 
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() ?? '';
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
 
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue;
-        try {
-          const data = JSON.parse(line.slice(6));
-          if (data.type === 'token' && data.content) {
-            onToken(data.content);
-          } else if (data.type === 'done') {
-            onDone(data.tokensUsed ?? 0);
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const payload = line.slice(6).trim();
+          if (payload === '[DONE]') {
+            onDone(0);
+            return;
           }
-        } catch (e) {
-  console.warn("Skipped malformed SSE data");
-}
+          try {
+            const data = JSON.parse(payload);
+            switch (data.type) {
+              case 'token':
+                if (data.content) onToken(data.content);
+                break;
+              case 'done':
+                onDone(data.tokensUsed ?? 0);
+                return;
+              case 'error':
+                onError(data.message ?? 'Server-side streaming error');
+                return;
+            }
+          } catch {
+            // skip malformed SSE line
+          }
+        }
       }
+    } finally {
+      reader.releaseLock();
     }
-  } catch (err) {
+  } catch (err: unknown) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      // caller cancelled — don't treat as error
+      return;
+    }
     onError(err instanceof Error ? err.message : 'Connection failed');
   }
 }

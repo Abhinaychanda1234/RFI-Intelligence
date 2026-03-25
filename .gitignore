@@ -29,3 +29,6 @@ backend/dist/
 *.db-shm
 _deploy/
 app.zip
+# Environment variables (CRITICAL)
+.env
+backend/.env
