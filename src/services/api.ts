@@ -2,7 +2,7 @@ import axios, { AxiosError, AxiosResponse } from 'axios';
 
 // 🔥 CHANGE THIS ONLY IF BACKEND URL CHANGES
 const BASE_URL = import.meta.env.PROD
-  ? "https://rfi-intelligence-api-g2bff4c3hmfxatcj.centralindia-01.azurewebsites.net"
+  ? "https://rfi-intelligence-api-g2bff4c3hmfxatcj.centralindia-01.azurewebsites.net/api"
   : "/api";
 
 // ─── Axios Client ────────────────────────────────────────────────────────────

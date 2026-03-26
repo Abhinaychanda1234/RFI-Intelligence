@@ -23,7 +23,7 @@ const origins = (process.env.FRONTEND_URL || 'http://localhost:5173')
   .map(s => s.trim());
 
 app.use(cors({
-  origin: [...origins, 'http://localhost:3000', 'http://localhost:4173'],
+  origin: [...origins, 'http://localhost:3000', 'http://localhost:4173', 'https://green-mud-0941f4810.4.azurestaticapps.net'],
   credentials: true
 }));
 

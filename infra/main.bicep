@@ -81,7 +81,7 @@ resource web 'Microsoft.Web/sites@2023-01-01' = {
         { name: 'USE_AZURE_STORAGE', value: 'true' }
         { name: 'DB_PATH', value: '/home/data/rfi_genie.db' }
         { name: 'APPINSIGHTS_INSTRUMENTATIONKEY', value: insights.properties.InstrumentationKey }
-        { name: 'FRONTEND_URL', value: 'https://${webAppName}.azurewebsites.net' }
+        { name: 'FRONTEND_URL', value: 'https://green-mud-0941f4810.4.azurestaticapps.net' }
       ]
       appCommandLine: 'node backend/dist/server.js'
     }
