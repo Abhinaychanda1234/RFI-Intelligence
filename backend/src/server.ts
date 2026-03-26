@@ -11,7 +11,6 @@ import chatRouter from './routes/chat';
 import documentsRouter from './routes/documents';
 import rfiRouter from './routes/rfi';
 import { knowledgeRouter, adminRouter } from './routes/knowledgeAdmin';
-
 const app = express();
 const PORT = process.env.PORT || 3001;
 
